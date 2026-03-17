@@ -246,6 +246,17 @@ class PredictionManager:
         market_prob = market.prices[0] if market.prices else 0.5
         sim_prob = sentiment.simulated_probability
 
+        # If no posts were analyzed, we have no signal
+        if sentiment.total_posts_analyzed == 0 or sentiment.confidence < 0.05:
+            return TradingSignal(
+                direction="HOLD",
+                edge=0.0,
+                confidence=0.0,
+                reasoning="Insufficient simulation data — no posts were generated for analysis.",
+                simulated_probability=sim_prob,
+                market_probability=market_prob,
+            )
+
         edge = sim_prob - market_prob
         threshold = Config.PREDICTION_SIGNAL_THRESHOLD
 
