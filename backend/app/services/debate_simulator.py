@@ -186,6 +186,10 @@ class DebateSimulator:
         args_for = list(dict.fromkeys(args_for))[:5]
         args_against = list(dict.fromkeys(args_against))[:5]
 
+        # Clamp values to [0, 1]
+        sim_prob = max(0.0, min(1.0, sim_prob))
+        result_confidence = max(0.0, min(1.0, result_confidence))
+
         return SentimentResult(
             simulated_probability=sim_prob,
             confidence=result_confidence,

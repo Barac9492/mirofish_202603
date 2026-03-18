@@ -16,9 +16,6 @@ from ..config import Config
 class PredictionRunStatus(str, Enum):
     FETCHING_MARKET = "fetching_market"
     GENERATING_SCENARIO = "generating_scenario"
-    CREATING_PROJECT = "creating_project"
-    BUILDING_GRAPH = "building_graph"
-    PREPARING_SIMULATION = "preparing_simulation"
     RUNNING_SIMULATION = "running_simulation"
     ANALYZING = "analyzing"
     COMPLETED = "completed"
@@ -38,9 +35,10 @@ class PredictionMarket:
     liquidity: float
     end_date: str
     active: bool = True
+    actual_outcome: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "condition_id": self.condition_id,
             "title": self.title,
             "slug": self.slug,
@@ -52,6 +50,9 @@ class PredictionMarket:
             "end_date": self.end_date,
             "active": self.active,
         }
+        if self.actual_outcome is not None:
+            d["actual_outcome"] = self.actual_outcome
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'PredictionMarket':
@@ -66,6 +67,7 @@ class PredictionMarket:
             liquidity=data.get('liquidity', 0),
             end_date=data.get('end_date', ''),
             active=data.get('active', True),
+            actual_outcome=data.get('actual_outcome'),
         )
 
 

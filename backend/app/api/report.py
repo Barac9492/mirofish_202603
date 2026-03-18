@@ -120,6 +120,13 @@ def generate_report():
             }
         )
         
+        from ..services.graph_tools import GraphToolsService
+        from flask import current_app
+        storage = current_app.extensions.get('neo4j_storage')
+        if not storage:
+            return jsonify({"success": False, "error": "Neo4j storage not initialized"}), 500
+        graph_tools = GraphToolsService(storage=storage)
+        
         # 定义后台任务
         def run_generate():
             try:
@@ -134,7 +141,8 @@ def generate_report():
                 agent = ReportAgent(
                     graph_id=graph_id,
                     simulation_id=simulation_id,
-                    simulation_requirement=simulation_requirement
+                    simulation_requirement=simulation_requirement,
+                    graph_tools=graph_tools
                 )
                 
                 # 进度回调
@@ -536,11 +544,19 @@ def chat_with_report_agent():
         
         simulation_requirement = project.simulation_requirement or ""
         
+        from ..services.graph_tools import GraphToolsService
+        from flask import current_app
+        storage = current_app.extensions.get('neo4j_storage')
+        if not storage:
+            return jsonify({"success": False, "error": "Neo4j storage not initialized"}), 500
+        graph_tools = GraphToolsService(storage=storage)
+        
         # 创建Agent并进行对话
         agent = ReportAgent(
             graph_id=graph_id,
             simulation_id=simulation_id,
-            simulation_requirement=simulation_requirement
+            simulation_requirement=simulation_requirement,
+            graph_tools=graph_tools
         )
         
         result = agent.chat(message=message, chat_history=chat_history)
