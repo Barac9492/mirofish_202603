@@ -11,9 +11,13 @@ State machine:
 import math
 from typing import Optional, Callable, Dict, Any, List
 
+from collections import defaultdict
+
 from ..config import Config
 from ..models.backtest import BacktestRun, BacktestRunStatus, BacktestResult, BacktestMetrics
 from ..models.prediction import PredictionMarket, PredictionRun, PredictionRunStatus, PredictionRunManager
+from ..services.calibrator import Calibrator
+from ..services.market_classifier import MarketClassifier, compute_confidence_tier
 from ..services.polymarket_client import PolymarketClient
 from ..services.prediction_manager import PredictionManager
 from ..storage.sqlite_store import SQLiteStore
@@ -25,9 +29,10 @@ logger = get_logger('mirofish.backtester')
 class Backtester:
     """Runs the prediction pipeline against resolved markets for validation."""
 
-    def __init__(self, store: SQLiteStore):
+    def __init__(self, store: SQLiteStore, classifier: Optional[MarketClassifier] = None):
         self.store = store
         self.polymarket = PolymarketClient()
+        self.classifier = classifier or MarketClassifier(store)
 
     def run(
         self,
@@ -120,6 +125,14 @@ class Backtester:
 
             metrics = self.compute_metrics(bt_run.id)
             bt_run.metrics = metrics.to_dict()
+
+            # Fit and save category calibration offsets
+            all_results = self.store.get_results_by_run(bt_run.id)
+            calibrator = Calibrator(store=self.store)
+            offsets = calibrator.fit_category_offsets(all_results)
+            if offsets:
+                calibrator.save_profiles(bt_run.id, offsets, all_results)
+
             bt_run.status = BacktestRunStatus.COMPLETED.value
             self.store.save_backtest_run(bt_run)
 
@@ -162,6 +175,12 @@ class Backtester:
         # Brier score: (predicted_prob - actual_binary)^2
         brier = (predicted_prob - actual_prob) ** 2
 
+        # Classify market category and confidence tier
+        category = self.classifier.classify(
+            market.condition_id, market.title, market.description or ""
+        )
+        confidence_tier = compute_confidence_tier(edge)
+
         return BacktestResult(
             run_id=run_id,
             market_id=market.condition_id,
@@ -173,6 +192,8 @@ class Backtester:
             edge=edge,
             brier_score=brier,
             correct=correct,
+            category=category,
+            confidence_tier=confidence_tier,
         )
 
     def compute_metrics(self, run_id: str) -> BacktestMetrics:
@@ -241,6 +262,12 @@ class Backtester:
         # Average edge
         avg_edge = sum(all_edges) / len(all_edges) if all_edges else 0.0
 
+        # Per-category metrics
+        category_metrics = self._compute_group_metrics(results, key_fn=lambda r: r.category or "other")
+
+        # Per-confidence-tier metrics
+        tier_metrics = self._compute_group_metrics(results, key_fn=lambda r: r.confidence_tier or "LOW")
+
         return BacktestMetrics(
             accuracy=accuracy,
             brier_score=brier_score,
@@ -250,7 +277,49 @@ class Backtester:
             calibration_rmse=calibration_rmse,
             markets_tested=len(results),
             avg_edge=avg_edge,
+            category_metrics=category_metrics,
+            confidence_tier_metrics=tier_metrics,
         )
+
+    def _compute_group_metrics(
+        self, results: List[BacktestResult], key_fn
+    ) -> Dict[str, Any]:
+        """Compute mini-metrics grouped by an arbitrary key function."""
+        groups: Dict[str, List[BacktestResult]] = defaultdict(list)
+        for r in results:
+            groups[key_fn(r)].append(r)
+
+        out = {}
+        for group_name, group_results in sorted(groups.items()):
+            actionable = [r for r in group_results if r.correct is not None]
+            briers = [r.brier_score for r in group_results if r.brier_score is not None]
+            edges = [r.edge for r in group_results]
+
+            acc = sum(r.correct for r in actionable) / len(actionable) if actionable else 0.0
+
+            # ROI per group
+            invested = 0.0
+            returns = 0.0
+            for r in actionable:
+                invested += 1.0
+                if r.correct:
+                    payout = 1.0 / max(
+                        r.market_prob if r.signal_direction == 'BUY_YES' else (1 - r.market_prob),
+                        0.01,
+                    )
+                    returns += payout - 1.0
+                else:
+                    returns -= 1.0
+            group_roi = returns / invested if invested > 0 else 0.0
+
+            out[group_name] = {
+                "accuracy": round(acc, 4),
+                "brier_score": round(sum(briers) / len(briers), 4) if briers else 0.0,
+                "roi": round(group_roi, 4),
+                "markets_tested": len(group_results),
+                "avg_edge": round(sum(edges) / len(edges), 4) if edges else 0.0,
+            }
+        return out
 
     def _compute_calibration_rmse(self, results: List[BacktestResult]) -> float:
         """Compute calibration RMSE by binning predictions."""

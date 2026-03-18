@@ -7,7 +7,8 @@ import base64
 import hashlib
 import hmac
 import pickle
-from typing import Optional, List
+from collections import defaultdict
+from typing import Dict, Any, Optional, List
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
@@ -142,3 +143,70 @@ class Calibrator:
         self.model = pickle.loads(blob)
         logger.info(f"Calibration model loaded from run {run_id}")
         return True
+
+    # ── Category-specific calibration ─────────────────────────────
+
+    def fit_category_offsets(
+        self, results: List[BacktestResult]
+    ) -> Dict[str, float]:
+        """
+        Compute per-category calibration offsets.
+        offset = mean(predicted) - mean(actual) for each category with ≥20 results.
+        A positive offset means the model overestimates; subtract it to correct.
+        """
+        groups: Dict[str, List[BacktestResult]] = defaultdict(list)
+        for r in results:
+            if r.predicted_prob is not None and r.actual_outcome is not None:
+                cat = r.category or "other"
+                groups[cat].append(r)
+
+        offsets = {}
+        for cat, cat_results in groups.items():
+            if len(cat_results) < MIN_DATAPOINTS:
+                logger.info(
+                    f"Category '{cat}': {len(cat_results)} results < {MIN_DATAPOINTS}, skipping offset"
+                )
+                continue
+
+            mean_pred = sum(r.predicted_prob for r in cat_results) / len(cat_results)
+            mean_actual = sum(
+                1.0 if r.actual_outcome == "YES" else 0.0 for r in cat_results
+            ) / len(cat_results)
+            offset = mean_pred - mean_actual
+            offsets[cat] = offset
+            logger.info(
+                f"Category '{cat}': offset={offset:.4f} "
+                f"(mean_pred={mean_pred:.4f}, mean_actual={mean_actual:.4f}, n={len(cat_results)})"
+            )
+
+        return offsets
+
+    def save_profiles(self, run_id: str, offsets: Dict[str, float], results: List[BacktestResult]) -> None:
+        """Save category offsets to SQLite calibration_profiles table."""
+        if self.store is None:
+            return
+
+        # Count samples per category
+        counts: Dict[str, int] = defaultdict(int)
+        for r in results:
+            if r.predicted_prob is not None and r.actual_outcome is not None:
+                counts[r.category or "other"] += 1
+
+        for cat, offset in offsets.items():
+            self.store.save_calibration_profile(run_id, cat, offset, counts.get(cat, 0))
+        logger.info(f"Saved {len(offsets)} category calibration profiles for run {run_id}")
+
+    def load_profiles(self, run_id: str) -> Dict[str, Dict[str, Any]]:
+        """Load category calibration profiles from SQLite."""
+        if self.store is None:
+            return {}
+        return self.store.load_calibration_profiles(run_id)
+
+    def transform_with_category(self, probability: float, category: str, profiles: Dict[str, Dict[str, Any]]) -> float:
+        """Apply category-specific offset to a probability."""
+        profile = profiles.get(category)
+        if profile is None:
+            return probability
+        offset = profile["offset"]
+        adjusted = probability - offset
+        return max(0.01, min(0.99, adjusted))
