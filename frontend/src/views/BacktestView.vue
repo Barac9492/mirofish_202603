@@ -10,6 +10,7 @@
           <button class="bt-nav-link" @click="$router.push('/')">Home</button>
           <button class="bt-nav-link" @click="$router.push('/prediction')">Prediction</button>
           <button class="bt-nav-link active" @click="$router.push('/backtest')">Backtest</button>
+          <button class="bt-nav-link" @click="$router.push('/scanner')">Scanner</button>
         </div>
         <span class="paper-badge">PAPER</span>
       </div>

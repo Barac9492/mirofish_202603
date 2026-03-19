@@ -98,6 +98,12 @@ class Config:
     # Paper trading
     PAPER_TRADING_MODE = os.environ.get('PAPER_TRADING_MODE', 'true').lower() == 'true'
 
+    # Signal Scanner
+    SCANNER_DEFAULT_MARKETS = int(os.environ.get('SCANNER_DEFAULT_MARKETS', '30'))
+    SCANNER_DEFAULT_MIN_VOLUME = int(os.environ.get('SCANNER_DEFAULT_MIN_VOLUME', '10000'))
+    SCANNER_MAX_THREADS = int(os.environ.get('SCANNER_MAX_THREADS', '5'))
+    SCANNER_MAX_MARKETS = int(os.environ.get('SCANNER_MAX_MARKETS', '100'))
+
     @classmethod
     def validate(cls):
         """Validate required configuration"""

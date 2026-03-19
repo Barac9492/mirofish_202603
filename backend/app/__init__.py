@@ -83,12 +83,13 @@ def create_app(config_class=Config):
         return response
 
     # Register blueprints
-    from .api import graph_bp, simulation_bp, report_bp, prediction_bp, backtest_bp
+    from .api import graph_bp, simulation_bp, report_bp, prediction_bp, backtest_bp, scanner_bp
     app.register_blueprint(graph_bp, url_prefix='/api/graph')
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
     app.register_blueprint(report_bp, url_prefix='/api/report')
     app.register_blueprint(prediction_bp, url_prefix='/api/prediction')
     app.register_blueprint(backtest_bp, url_prefix='/api/backtest')
+    app.register_blueprint(scanner_bp, url_prefix='/api/scanner')
 
     # Health check
     @app.route('/health')

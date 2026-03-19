@@ -7,6 +7,7 @@ import ReportView from '../views/ReportView.vue'
 import InteractionView from '../views/InteractionView.vue'
 import PredictionView from '../views/PredictionView.vue'
 import BacktestView from '../views/BacktestView.vue'
+import ScannerView from '../views/ScannerView.vue'
 
 const routes = [
   {
@@ -23,6 +24,11 @@ const routes = [
     path: '/backtest',
     name: 'Backtest',
     component: BacktestView
+  },
+  {
+    path: '/scanner',
+    name: 'Scanner',
+    component: ScannerView
   },
   {
     path: '/process/:projectId',

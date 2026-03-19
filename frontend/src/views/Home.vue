@@ -6,6 +6,7 @@
       <div class="nav-links" :style="s.navLinks">
         <router-link to="/prediction" :style="s.predictionLink">Prediction Markets</router-link>
         <router-link to="/backtest" :style="s.backtestLink">Backtest</router-link>
+        <router-link to="/scanner" :style="s.scannerLink">Scanner</router-link>
         <a href="https://github.com/nikmcfly/MiroFish-Offline" target="_blank" class="github-link" :style="s.githubLink">
           Visit our Github <span>↗</span>
         </a>
@@ -159,6 +160,7 @@ const s = reactive({
   navLinks: { display: 'flex', alignItems: 'center', gap: '25px' },
   predictionLink: { color: '#FF4500', textDecoration: 'none', fontFamily: mono, fontSize: '0.85rem', fontWeight: '600', border: '1px solid #FF4500', padding: '4px 12px' },
   backtestLink: { color: '#FF4500', textDecoration: 'none', fontFamily: mono, fontSize: '0.85rem', fontWeight: '600', border: '1px solid #FF4500', padding: '4px 12px' },
+  scannerLink: { color: '#FF4500', textDecoration: 'none', fontFamily: mono, fontSize: '0.85rem', fontWeight: '600', border: '1px solid #FF4500', padding: '4px 12px' },
   githubLink: { color: '#fff', textDecoration: 'none', fontFamily: mono, fontSize: '0.9rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' },
   mainContent: { maxWidth: '1400px', margin: '0 auto', padding: '60px 40px' },
   heroSection: { display: 'flex', justifyContent: 'space-between', marginBottom: '80px', position: 'relative' },
