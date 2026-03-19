@@ -102,6 +102,7 @@ from sqlalchemy.engine import Engine
 from ..models.backtest import BacktestResult, BacktestRun
 from ..models.prediction import PredictionRun, PredictionRunStatus
 from ..models.position import PaperOrder, PaperPosition
+from ..models.scanner import ScannerRun, ScannerSignal
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +207,44 @@ paper_positions = Table(
     Column("cost_basis", Float),
     Column("status", String),
     Column("resolved_pnl", Float),
+)
+
+scanner_runs = Table(
+    "scanner_runs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("started_at", String),
+    Column("status", String),
+    Column("config", String),  # JSON
+    Column("total_markets", Integer, default=0),
+    Column("completed_markets", Integer, default=0),
+    Column("failed_markets", Integer, default=0),
+    Column("actionable_count", Integer, default=0),
+    Column("completed_at", String),
+    Column("duration_seconds", Float),
+)
+
+scanner_signals = Table(
+    "scanner_signals",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("run_id", String, ForeignKey("scanner_runs.id")),
+    Column("market_id", String),
+    Column("market_title", String),
+    Column("market_slug", String),
+    Column("category", String),
+    Column("direction", String),
+    Column("edge", Float),
+    Column("confidence", Float),
+    Column("confidence_tier", String),
+    Column("simulated_prob", Float),
+    Column("market_prob", Float),
+    Column("market_volume", Float),
+    Column("market_liquidity", Float),
+    Column("days_remaining", Float),
+    Column("reasoning", String),
+    Column("created_at", String),
+    UniqueConstraint("run_id", "market_id", name="uq_scan_run_market"),
 )
 
 
@@ -480,3 +519,72 @@ class SQLiteStore:
             if d.get(key):
                 d[key] = json.loads(d[key])
         return PredictionRun.from_dict(d)
+
+    # ── Scanner Runs ──────────────────────────────────────────────
+
+    def save_scanner_run(self, run: ScannerRun) -> None:
+        d = run.to_dict()
+        d["config"] = json.dumps(d["config"]) if d["config"] else None
+        self._safe_write("save_scanner_run", lambda conn: conn.execute(
+            scanner_runs.insert().prefix_with("OR REPLACE"), d,
+        ))
+
+    def get_scanner_run(self, run_id: str) -> Optional[ScannerRun]:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                scanner_runs.select().where(scanner_runs.c.id == run_id)
+            ).mappings().first()
+        if row is None:
+            return None
+        return self._row_to_scanner_run(row)
+
+    def list_scanner_runs(self) -> List[ScannerRun]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                scanner_runs.select().order_by(scanner_runs.c.started_at.desc())
+            ).mappings().all()
+        return [self._row_to_scanner_run(r) for r in rows]
+
+    def delete_scanner_run(self, run_id: str) -> bool:
+        deleted = []
+        def _do_delete(conn):
+            conn.execute(
+                scanner_signals.delete().where(scanner_signals.c.run_id == run_id)
+            )
+            result = conn.execute(
+                scanner_runs.delete().where(scanner_runs.c.id == run_id)
+            )
+            deleted.append(result.rowcount > 0)
+        self._safe_write("delete_scanner_run", _do_delete)
+        return deleted[0] if deleted else False
+
+    def has_active_scan(self) -> Optional[str]:
+        """Return the ID of any PENDING/SCANNING scan, or None."""
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                scanner_runs.select()
+                .where(scanner_runs.c.status.in_(["PENDING", "SCANNING"]))
+                .limit(1)
+            ).mappings().first()
+        return row["id"] if row else None
+
+    @staticmethod
+    def _row_to_scanner_run(row: Any) -> ScannerRun:
+        d = dict(row)
+        d["config"] = json.loads(d["config"]) if d.get("config") else {}
+        return ScannerRun.from_dict(d)
+
+    # ── Scanner Signals ───────────────────────────────────────────
+
+    def save_scanner_signal(self, signal: ScannerSignal) -> None:
+        d = signal.to_dict()
+        self._safe_write("save_scanner_signal", lambda conn: conn.execute(
+            scanner_signals.insert().prefix_with("OR REPLACE"), d,
+        ))
+
+    def get_signals_by_run(self, run_id: str) -> List[ScannerSignal]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                scanner_signals.select().where(scanner_signals.c.run_id == run_id)
+            ).mappings().all()
+        return [ScannerSignal.from_dict(dict(r)) for r in rows]
